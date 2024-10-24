@@ -42,6 +42,13 @@ Tokyo <- importNOAA(code = '476620-99999', year = 1952:2020)
 Tokyo is one of the largest metropolises globally, consisting of 23 cities and towns. It has very little green space per capita and is highly organized and expensive. The station in Tokyo has been operational since 1952, with a brief data interruption in 2005. The most accurate and continuous data was recorded between 2006 and 2020, with approximately 9,000 annual data points, close to the theoretical 8,750.
 
 For detailed analysis, we chose the period 2006–2016, as it provided the most accurate and continuous data.
+![Ciągłość_Obserwacji-1](https://github.com/user-attachments/assets/1694e87a-79e1-4340-820f-4bde26548916)
+
+## Screenshot
+![histogram_4_pory-1](https://github.com/user-attachments/assets/6584362a-9aaf-4454-9118-bfcf395f4d76)
+![Trend_all-1](https://github.com/user-attachments/assets/49797231-a2a3-43ae-bc35-80a008a4f687)
+![Wykresy_rozrzutu-1](https://github.com/user-attachments/assets/a9944bc7-608f-4ca8-8fd8-3b32648d4bd4)
+![Wykres_rozrzutu_z_trzecia_zmienna-1](https://github.com/user-attachments/assets/88ea3308-3f12-4f07-a6c2-ebcb7c620926)
 
 ## Conclusion
 
