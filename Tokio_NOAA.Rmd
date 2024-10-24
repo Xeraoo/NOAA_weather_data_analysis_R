@@ -1,0 +1,678 @@
+---
+title: 'Projekt I: Analiza danych meteorologicznych z bazy ISD NOAA'
+subtitle: 'Autorzy: Tymoteusz Maj, Wiktor Kondrak'
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    theme: darkly
+    highlight: zenburn
+    toc: yes
+    toc_float: yes
+    collapsed: no
+    smooth_scroll: no
+    number_sections: no
+    toc_depth: 3
+    self_contained: yes
+    code_folding: null
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+      });
+</script>
+
+<style type="text/css"> 
+body { font-size: 14px; text-align: justify ; color: white} code.r{ font-size: 14px;} pre { font-size: 14px} 
+h1   { font-size: 24px;} h2 { font-size: 22px;} h3 { font-size: 20px;} 
+</style>
+
+```{r Wczytanie_bibliotek, include=FALSE}
+#Wczytanie wszystkich Bibliotek uzytych w projekcie
+
+library(readr)
+library(nycflights13)
+library(tidyverse)
+library(tibble)
+library(ggplot2)
+library(dplyr)
+library(Hmisc)
+library(extrafont)
+library(ggrepel)
+library(dichromat)
+library(PogromcyDanych)
+library(plotly)
+library(prettydoc)
+library(ggthemes)
+library(DT)
+library(openair)
+library(worldmet)
+library(pastecs)
+library(forecast)
+library(corrplot)
+library(utils)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, error = F, fig.align = "center", cache = T)
+```
+
+***
+# 1. Cel
+***
+  Celem przedmiotowego ćwiczenia jest zapoznanie się studentów z pracą na niejako "zaszyfrowanych" plikach danych, to znaczy takich, które przechowywane są za pomocą zanków alfanumerycznych, bez znaków podziału kolumn, oraz bez nagłówków. Wykorzystane przez nas dane będą niejako surowe. Aby prawidłowo wykonac zlecone nam zadanie musielismy zapoznac sie z formatem danych, poznać narzędzia które ułatwią nam pracę oraz ich przetwarzanie. Musieliśmy dokonać analizy statystycznej danych aby okreslic panujące trendy oraz w celu zauważenia zależności między poszczególnymi danymi. Ostatnim aspektem naszej pracy, było napisanie sprawozdania technicznego z wykonanengo przez nas ćwiczenia przy pomocy RMarkdown, w celu udokumentowania naszej pracy w języku R. 
+ 
+***
+# 2. R (język programowania)
+***
+**R** - interpretowany jezyk programowania oraz srodowisko do obliczen statystycznych. Stosowany jest w analizie szeroko rozumianych danych środowiskowych i przestrzennych oraz ich wizualizacji.
+Podobny jest do języka i środowiska S stworzonego w Bell Laboratories przez Johna Chambersa i jego współpracowników. R jako implementacja języka S została stworzona przez Roberta Gentlemana i Rossa Ihakę na uniwersytecie w Auckland. Nadaje się on świetnie do interaktywnej pracy z danymi, ponieważ połączono w nim wybrane cechy języków funkcyjnych oraz obiektowych.
+
+*[Źródlo](https://pl.wikipedia.org/wiki/R_(język_programowania))*
+
+***
+# 3. R Markdown
+***
+**R Markdown** - jest formatem pliku stworzonym do sporzadzania dynamicznych dokumentow z wykorzystaniem R. Plik typu Markdown jest pisany w specyficzny dla siebie sposob, który zaklada bardzo latwa edycje tekstu oraz implementowanie w nim fragmentow kodu (chunki zawierajace kod z poleceniami w jezyku R). R Markdown jest bardzo wygodna metoda formatowania plikow HTML, PDF i dokumentow MS Word.
+
+*[Źródlo](https://rmarkdown.rstudio.com/articles_intro.html)*
+
+***
+# 4. Baza ISD NOAA
+*** 
+Baza [ISD NOAA](https://www.ncdc.noaa.gov/isd) (Integrated Surface Database of the National Oceanic and Atmosferic Administration) jest obecnie jednym z największych zbiorów bezpłatnie udostępnianych meteorologicznych danych pomiarowych. Zawiera ona obserwacje uśredniane w czasie jednej godziny dla 12826 naziemnych punktów pomiarowych.
+
+Pomiary meteorologiczne w formacie ASCII udostępniane są bezpłatnie przez serwer [FTP](ftp://ftp.ncdc.noaa.gov/pub/data/noaa), jednak pobieranie ich w sposób bezpośredni jest żmudne i pracochłonne. Format w jakim są przechowywane dane wymaga dodatkowego przetworzenia, aby możliwa była ich swobodna analiza.
+
+Dane pomiarowe z bazy ISD NOAA przechowywane są za pomocą znaków ASCII w plikach formatu ISH (Integrated Surface Hourly - Compressed Archive). Informacje dotyczące tego, jakie zmienne i w jakich jednostkach są udostępniane znajdują się w szczegółowej [dokumentacji formatu](ftp://ftp.ncdc.noaa.gov/pub/data/ish/ish-format-document.pdf). Wartość każdej z dostępnych zmiennych zajmuje określone pozycje w rekordzie pliku, tak więc bez znajomości jego dokładnej struktury każda linijka jest tylko zakodowanym rzędem cyfr i liter. Poza 34 zmiennymi, które są obligatoryjne, czasem znajdziemy również dodatkowe informacje w pliku. Wśród najważniejszych zmiennych możemy wyróżnić wartości wybranych pomiarów meteorologicznych, informacje dotyczące stacji i źródła obserwacji, a także wyniki testów jakości dla poszczególnych serii pomiarowych.
+
+*[Źródlo - Zadanie Projektowe](https://rstudio-pubs-static.s3.amazonaws.com/579343_ee4609d7ebca4217a0530fdc7eadad9c.html#wprowadzenie)*
+
+***
+# 5. Wybrana Stacja
+*** 
+
+W celu wykonania przedmiotowego ćwiczenia postanowiliśmy skorzystać z stacji "TOKYO", znajdującej się w samym centrum stolicy Japonii.
+
+```{r Mapa_Stacji, include=TRUE}
+getMeta(site = "TOKYO", lat = 35.6833333333, lon = 139.76666666666668, end.year = "current", plot = T, returnMap = T )
+```
+
+```{r Import_danych, include=FALSE}
+#Przypisanie danych o wybranej lokalizacji
+
+Japonia <- getMeta(site = "TOKYO", lat = 35.6833333333, lon = 139.76666666666668, end.year = "current", plot = T, returnMap = T )
+
+#Import danych z wybranej stacji do zmiennych
+
+Tokyo <- importNOAA(code = '476620-99999', year = 1952:2020)
+```
+
+Tokio to bez wątpienia jedna z największych metropolii świata. Obecnie w jego skład wchodzą 23 miasta i miasteczka, z których każde tworzy swoisty klimat dla turystów. 
+
+Miasto ma bardzo mało zielonej przestrzeni, statystycznie najmniej na świecie w przeliczeniu na liczbę mieszkańców. Tokio jest miastem, w którym panuje doskonała organizacja i porządek. Jest to jednocześnie bardzo drogie miasto. Drogie są nie tylko ekskluzywne rzeczy, ale także codzienne życie, jak bilet na metro, wjazd na trasę szybkiego ruchu, jedzenie.
+
+W Tokio mieszka ponad jedna czwarta część ludności Japonii ogółem. Trzy centralnie położone dzielnice Tokio są dzielnicami, w których znajdują się wyłącznie biura i siedziby firm. Liczba Japończyków dojeżdżających tu do pracy przewyższa osiem razy liczbę mieszkańców tego obszaru.
+
+*[Źródlo](http://japoland.pl/blog/tokio-2/)*
+
+![](G:/Dokumenty/Studia/AGH/Geoinformacja/II semestr/Podstawy nauk o Ziemii II/Mateusz Rzeszutek, dr inż/PNZII - Maj_Kondrak/Zdjecia/Tokio.jpg)
+*[Źródlo obrazu](https://wall.alphacoders.com/big.php?i=702594)*
+
+***
+# 6. Analiza Statystyczna
+***
+
+***
+## 6.1. Ciągłość obserwacji
+***
+
+```{r Ciągłość_Obserwacji, include=TRUE}
+
+# Dodanie informacji o roku do ramki danych
+
+Tokyo$years <- format(Tokyo$date, "%Y")
+
+# Policzenie ilości pomiarów dla danego roku dla stacji Okęcie
+
+Tokyo %>%
+  group_by(years) %>%
+  summarise(liczba_pomiarow = n() - sum(is.na(wd))) -> tokyo_summary
+
+tokyo_summary <- tokyo_summary %>% 
+  as_tibble() %>% 
+  mutate(years = as.integer(years))
+
+czy_pomiary_tokyo <- data.frame(ymin = -Inf,
+                                 ymax = Inf,
+                                 xmin = c(1950,   2004.5, 2022),
+                                 xmax = c(1951.5, 2005.5, 2020.5))
+
+# Utworzenie wykresu
+
+ggplot(tokyo_summary, aes(x=years, y=liczba_pomiarow, color=liczba_pomiarow)) +
+  geom_point(size=3, show.legend = FALSE) + 
+  scale_y_continuous(name = 'Liczba rekordów pomiarowych',
+                     limits = c(0, 9000),
+                     expand = c(0, 0)) +
+  scale_x_continuous(name = 'Rok',
+                     limits = c(1950, 2022),
+                     expand = c(0, 0),
+                     breaks = seq(1950, 2020, by = 5)) +
+  geom_rect(data = czy_pomiary_tokyo, 
+            aes(ymin = ymin, ymax = ymax,
+                xmin = xmin, xmax = xmax), fill = 'red',
+            alpha = 0.15, inherit.aes = FALSE) +
+  theme_minimal() +
+  theme(plot.margin = unit(c(.5,.5,.5,.5), "cm")) +
+  labs(title = 'Liczba pomiarów dla stacji pomiarowej Tokyo (476620) w ISD NOAA', 
+       subtitle = paste0('Stan na ',format(Sys.time(),'%d %B, %Y'))) 
+
+```
+
+Stacja Tokyo działa od 1952 roku, i tylko w 2005 roku od momentu rozpoczęcia pomiarów wystąpiła przerwa w dostarczaniu danych. Dodatkowo z powyższego wykresu możemy zauważyć, że najlepszą dokładnością danych charakteryzuje się okres od 2006-2020, gdyż to właśnie w tym okresie wykonywanych było najwięcej pomiarów, oraz zebrane dane miały charakter ciągły. Ilość danych zebranych w ciągu roku bliska jest 9000 i w przybliżeniu równa jest 8750.
+
+Postanowilismy w celu jak najdokladniejszej analizy poddac okres 2006-2016, gdyz to wlasnie on naszym zdaniem posiada najbardziej dokladne dane (po 2016 roku mozemy zauwazyc znaczacy spadek liczby pomiarów).
+
+```{r wybranie_10lecia, include=TRUE}
+
+#Przypisanie wybranego okresu czasu do zmeinnej
+
+tokyo_10 <- filter(Tokyo, Tokyo$years > 2005 & years < 2017)
+
+#Przypisanie interesujacych nas danych do zmiennej
+
+tokyo_10s <- Tokyo %>% 
+  select(date, ws, wd, air_temp, atmos_pres, dew_point, visibility, RH, ceil_hgt)
+
+datatable(tokyo_10s)
+
+```
+
+W rozpatrywanym okresie występuje wysoka kompletnosć danych. W dalszej czesci naszej analizy posluzymy sie wynikami w formie graficznej, gdyz przy takiej ilosci danych, taka forma bedzie bardziej czytelna. 
+
+***
+## 6.2. Statystyki opisowe
+***
+
+```{r Statystyki_opisowe, include=TRUE}
+
+# Wybranie interesujących nas statystyk i parametrów
+
+desc_Tokyo <- stat.desc(tokyo_10s)
+
+desc_Tokyo <- desc_Tokyo[c(1,9,13,4, 5, 6), c(2:9)] 
+
+# Ręczne policzenie kwantyli
+
+q_wd <- quantile(tokyo_10s$wd, c(1/4, 3/4), na.rm=TRUE)
+q_ws <- quantile(tokyo_10s$ws, c(1/4, 3/4), na.rm=TRUE)
+q_hgt <-quantile(tokyo_10s$ceil_hgt, c(1/4, 3/4), na.rm=TRUE)
+q_vis <-quantile(tokyo_10s$visibility, c(1/4, 3/4), na.rm=TRUE)
+q_temp <-quantile(tokyo_10s$air_temp, c(1/4, 3/4), na.rm=TRUE)
+q_dew <-quantile(tokyo_10s$dew_point, c(1/4, 3/4), na.rm=TRUE)
+q_pres <-quantile(tokyo_10s$atmos_pres, c(1/4, 3/4), na.rm=TRUE)
+q_rh <-quantile(tokyo_10s$RH, c(1/4, 3/4), na.rm=TRUE)
+
+desc_Tokyo_q <- cbind(q_wd, q_ws, q_hgt, q_vis, q_temp, q_dew, q_pres, q_rh)
+
+# Nadanie tych samych nazw kolumn statystykom opisowym i kwantylom
+
+colnames(desc_Tokyo) <- c("Kierunek wiatru","Prędkość wiatru","Podstawa chmur", "Widoczność",
+                           "Temperatura", "Punkt rosy", "Ciśnienie atm.", 
+                           "Wilgotność względna")
+
+colnames(desc_Tokyo_q) <- c("Kierunek wiatru","Prędkość wiatru","Podstawa chmur", "Widoczność",
+                           "Temperatura", "Punkt rosy", "Ciśnienie atm.", 
+                           "Wilgotność względna")
+
+# Połączenie statystyk opisowych wraz z kwantylami
+
+desc_Tokyo <- rbind(desc_Tokyo, desc_Tokyo_q)
+
+# Nadanie nazw statystykom opisowym
+
+rownames(desc_Tokyo) <- c("Liczba", "Średnia", "Odchylenie st.", "Minimum", "Maksimum", 
+                           "Amplituda", "Kwantyl 1/4", "Kwantyl 3/4")
+
+# Transpozycja ramki danych
+
+desc_Tokyo <- as.data.frame(t(desc_Tokyo))
+
+datatable(desc_Tokyo)
+
+```
+
+Na podstawie samej tabeli ze statystykami opisowymi ciężko wnioskować o generalnych trendach poszczególnych parametrów. Niemniej jednak w przypadku temperatury czy prędkości wiatru te informacje są przydatne.
+
+***
+## 6.3. Histogram
+***
+
+```{r Histogram, include=TRUE}
+#Dodanie informacji o porach roku do ramki danych
+
+tokyo_10s <- cutData(tokyo_10s, type="season")
+
+# Wykreślenie kolejno dwóch histogramów nakładających się na siebie dla lata i zimy
+
+hist(tokyo_10s$air_temp[tokyo_10s$season == "summer (JJA)"], breaks=10, xlim=c(-40,60), 
+     col=rgb(1,0,0,0.5), xlab="Temperatura powietrza [°C]", ylab="Częstość występowania", 
+     main="Rozkład temperatury powietrza w latach 2006-2016 \nna stacji Tokyo (476620) z podziałem na lato i zimę")
+hist(tokyo_10s$air_temp[tokyo_10s$season == "winter (DJF)"], breaks=10, xlim=c(-40,60), 
+     col=rgb(0,0,1,0.5), xlab="Temperatura powietrza [°C]", ylab="Częstość występowania", 
+     main="Rozkład temperatury powietrza w latach 2006-2016 \nna stacji Tokyo (476620) z podziałem na lato i zimę", add = T)
+legend("topright", legend=c("Lato", "Zima"), col=c(rgb(1,0,0,0.5), 
+                                                      rgb(0,0,1,0.5)), pt.cex=2, pch=15)
+
+```
+Otrzymane rozkłady temperatury obrazuja nam w sposób bardzo czytelny różnicę między temperaturami na stacji TOKYO w rejestrowanym okresie zimy oraz lata. Możemy z powyższego histogramu z łatwością odczytać, że w zimie dominowały temperatury nieznacznie powyzej 0 °C, natomiast w lecie próg dominacji temperaturowej przekroczył 20°C. 
+
+Powyzszy wykres przedstawia tylko dwie pory roku, dla lepszego zoobrazowania klimatu panujacego w tym mieście posłużyliśmy się histogramem, z podziałem na wszystkie cztery pory roku. 
+
+```{r histogram_4_pory, include=TRUE}
+
+tokyo_10s %>% 
+  ggplot(aes(x = air_temp, fill = season)) +
+  geom_histogram(binwidth = 1, 
+                 color = "grey") + 
+  scale_y_continuous(breaks = seq(0, 100000, 1000), 
+                     expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(-25, 40, 5), 
+                     expand = c(0,0)) +
+  labs(title = "Rozkład temperatury powietrza w latach 2006-2016 na stacji Tokyo z podziałem na pory roku", 
+       fill = "Pora roku") + 
+  xlab("Temperatura powietrza [°C]") + 
+  ylab("Częstość występowania") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  face = "bold"),
+        legend.text = element_text(face = "bold", 
+                                   hjust = 0.5),
+        legend.title = element_text(face = "bold", 
+                                   hjust = 0.5),
+        legend.position = c(0.9, 0.8))
+
+```
+Otrzymany Histogram z łatwoscia obrazuje nam dominacje częstotliwości pomiarów w okresie wiosny, jednak uznaliśmy że takie przedstawienie danych nie jest dla nas satysfakcjonuące gdyż rozkład temperatury "nakłada się" na siebie, przez co dokładna analiza tych danych mogła by nie być wykonalna (nie widzimy dokładnych miejsc wartości minimum oraz maksimum). W celu poprawienia czytelności wykresu postanowiślmy każdą porę roku przedstawić na oddzielnym histogramie. 
+
+```{r temperatura_z_podzialem_na_pory_roku, include=TRUE}
+
+tokyo_10s %>% 
+  ggplot(aes(x = air_temp, fill = season)) +
+  geom_histogram(binwidth = 1, 
+                 color = "grey") + 
+  facet_wrap(~season, 
+             nrow = 2, 
+             scales = "free_y") +
+  scale_x_continuous(breaks = seq(-30, 60, 5), 
+                     expand = c(0,0)) +
+  labs(title = "Rozkład temperatury powietrza w latach 2006-2016 na stacji Tokyo z podziałem na pory roku", 
+       fill = "Pora roku") + 
+  xlab("Temperatura powietrza [°C]") + 
+  ylab("Częstość występowania") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  face = "bold"),
+        legend.text = element_text(face = "bold", 
+                                   hjust = 0.5),
+        legend.title = element_text(face = "bold", 
+                                   hjust = 0.5),
+        legend.position = c(0.9, 0.25))
+
+```
+Z powyzszego wykresu z łatwością możemy odczytać wartości dominujące w danej potrze roku, określić jaka była wartośc minimalna oraz maksymalna temperatury, oraz jak zmieniała się częstotliwość występowania takich temperatur w danej porze roku. Z powyższego wykresu widzimy że histogramy wiosny i jesieni oraz lata i zimy posiadaja podobny kształt (nie chodzi o wartości temeratury), dzieki takim informacją możemy zauważyć że zmiany temperatury w wybranej przez nas stacji nie są w skali roku zbyt drastyczne, a panujący tam klimat jest łagodny. 
+
+
+```{r RH_z_podzialem_na_pory_roku, include=TRUE}
+
+tokyo_10s %>% 
+  ggplot(aes(x = RH, fill = season)) +
+  geom_histogram(binwidth = 1, 
+                 color = "grey") + 
+  facet_wrap(~season, 
+             nrow = 2, 
+             scales = "free_y") +
+  scale_x_continuous(breaks = seq(0, 300, 10), 
+                     expand = c(0,0)) +
+  labs(title = "Rozkład wilgotności względnej w latach 2006-2016 na stacji Tokyo z podziałem na pory roku", 
+       fill = "Pora roku") + 
+  xlab("Wilgotność względna ") + 
+  ylab("Częstość występowania") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  face = "bold"),
+        legend.text = element_text(face = "bold", 
+                                   hjust = 0.5),
+        legend.title = element_text(face = "bold", 
+                                   hjust = 0.5),
+        legend.position = c(0.05, 0.85))
+
+```
+Z powyzszego wykresu z łatwością możemy odczytać wartości dominujące w danej potrze roku, określić jaka była wartośc minimalna oraz maksymalna wilgotnosci wzglednej, oraz okreslic która pora roku charakteryzuje się największą wilgotnością, a która uznana może zostać za stosunkowo "suchą".Z powyższego wykresu możemy zauważyć wilgotność na tej stacji jest stosunkowo podobna na przestrzeni całego roku, jednak wilgotność dominuje w okresie wiosny oraz zimy. Natomiast najbardziej suchą porą roku jest lato. 
+
+
+***
+## 6.4. Wykres pudełkowy
+***
+
+
+```{r Wykres_Pudelkowy, include=TRUE}
+
+ggplot(tokyo_10s , aes(x=season, y=air_temp, fill=season)) + 
+  geom_boxplot(alpha=0.5) +
+  stat_boxplot(geom ='errorbar',
+               width = 0.2) + 
+  stat_summary(fun.y=mean, 
+               geom="point", 
+               shape=18, 
+               size=4, 
+               color="black", 
+               fill="red") +
+  theme_minimal() +
+  theme(legend.position="none", 
+        plot.title = element_text(size=14, face="bold", hjust = 0.5), 
+        axis.title=element_text(size=12),
+        axis.text=element_text(size=12, color="black")) +
+  labs(x = "Pora roku",
+       y = "Temperatura powietrza [°C]",
+       title = "Wykresy pudełkowe dla temperatury powietrza w latach 2006-2016 na stacji Tokyo
+       z podziałem na pory roku")
+
+```
+Powyższy wykres przedstawia rozkład danych temperatury zależnie od pory roku, możemy z niego wywnioskować, że, rzecz jasna, najwyższe temperatury obserwowane są w lecie a najmniejsze w zimie, jednak temperatury na jesień są nieco wyższe niż te na wiosnę, chociaż intuicyjnie wydaje się być na odwrót.
+
+```{r Wykres_Pudelkowy_dew_point, include=TRUE}
+
+ggplot(tokyo_10s , aes(x=season, y=dew_point, fill=season)) + 
+  geom_boxplot(alpha=0.5) +
+  stat_boxplot(geom ='errorbar',
+               width = 0.2) + 
+  stat_summary(fun.y=mean, 
+               geom="point", 
+               shape=18, 
+               size=4, 
+               color="black", 
+               fill="red") +
+  theme_minimal() +
+  theme(legend.position="none", 
+        plot.title = element_text(size=14, face="bold", hjust = 0.5), 
+        axis.title=element_text(size=12),
+        axis.text=element_text(size=12, color="black")) +
+  labs(x = "Pora roku",
+       y = "Temperatura punktu rosy [°C]]",
+       title = "Wykresy pudełkowe dla temperatury punktu rosy w latach 2006-2016 na stacji Tokyo
+       z podziałem na pory roku")
+
+```
+Powyższy wykres obrazuje bardzo wyraźnie to co wynika z zależności fizycznych temperatury punktu rosy. Dzięki zestawieniu tych dówch wykresów obok siebie możemy zobaczyć podopieństwo co do dominujących pór roku w zakresie temperatury. Podobnie jak w przypadku wykresu temperatury możemy zauważyć że temperatura punktu rosy jest najwyższa w okresie letnim, natomiast najniższa oczywiście podczas trwania zimy. Podobnie jak na wykresie temperatury, widzimy nieznaczną dominację jesieni nad wiosną, co nie zawsze jest sprawą oczywistą. 
+
+***
+## 6.4. Wykres z linią terndu
+***
+
+Z powodu dużej zmienności temperatury (w ciągu dnia i miesiący) na samym początku zagregujemy godzinowe wartości temperatury powietrza do średnich miesięcznych, a następnie zamienimy ramkę danych na serię czasową za pomocą funkcji **ts** z pakietu **stats**.
+
+Teraz sporządzamy trzy wykresy obrazujące średnie miesięczne temperatury powietrza w badanym okresie oraz dodamy kolorową linię ze średnią kroczącą – 1-roczną, 5-letnią oraz 10-letnią.
+
+```{r Wykres_z_liniami_trendu, include=TRUE}
+#Dodanie do ramki danych informacji o latach i miesiącach
+
+tokyo_10s <- cutData(tokyo_10s, type="year")
+tokyo_10s <- cutData(tokyo_10s, type="month")
+
+# Obliczenie średniej miesięcznej temperatury dla każdego miesiąca w roku i zapisanie jej do nowego obiektu.
+
+tokyo_10s %>% 
+  select(air_temp, year, month) %>%
+  group_by(year, month) %>%
+  summarise(mean_temp = mean(air_temp, na.rm=TRUE)) -> t_tokyo_mean
+
+# Zamiana średnich temperatur na serię czasową
+
+t_tokyo_ts <- ts(t_tokyo_mean[3], frequency = 12, start = c(2005,1), end = c(2021,12))
+
+# Ustawienie wielu wykresów na jednym rysunku
+
+par(mfrow = c(3,1))
+
+# Wykreślenie średnich miesięcznych temperatury wraz ze średnią kroczącą dla 1 roku, 5 lat oraz 10 lat
+
+plot.ts(t_tokyo_ts, 
+        col="darkgray", 
+        main = "1-roczna średnia krocząca temperatury powietrza", 
+        xlab="Rok", 
+        ylab="Temperatura powietrza [°C]")
+
+lines(ma(t_tokyo_ts, order = 12), 
+      col = "red", lwd=3)
+
+grid(col = "lightgray", 
+     lty = "dotted",
+     lwd = par("lwd"), 
+     equilogs = TRUE)
+
+plot.ts(t_tokyo_ts, 
+        col="darkgray", 
+        main = "5-letnia średnia krocząca temperatury powietrza",
+        xlab="Rok", 
+        ylab="Temperatura powietrza [°C]")
+
+lines(ma(t_tokyo_ts, order = 60), 
+      col = "orange", 
+      lwd=3)
+
+grid(col = "lightgray", 
+     lty = "dotted",
+     lwd = par("lwd"), 
+     equilogs = TRUE)
+
+plot.ts(t_tokyo_ts, 
+        col="darkgray", 
+        main = "10-letnia średnia krocząca temperatury powietrza",
+        xlab="Rok", 
+        ylab="Temperatura powietrza [°C]")
+
+lines(ma(t_tokyo_ts, order = 120), 
+      col = "darkgreen", 
+      lwd=3)
+
+grid(col = "lightgray", 
+     lty = "dotted",
+     lwd = par("lwd"), 
+     equilogs = TRUE)
+
+```
+
+Przy pomocy tych wykresów można łatwo zauważyć zamiany średniej temperatury podczas zimy i lata w poszczegolych latach. Powyższe wykresy ujawniają, że dla stacji Tokyo w ciągu ostatnich 10 lat istnieje niewielki, jednak zauważalny dodatni trend średniej rocznej temperatury powietrza (im lepsze wygładzenie średniej kroczącej tym łatwiej to zauważyć). Patrząc na średnie miesięczne można również stwierdzić, że w miesiącach letnich średnie temperatury powietrza coraz częściej przekraczają 20°C w ostatnich latach.
+
+Wartości trendu można oszacować za pomocą funkcji pakietu **openair**. Zwraca ona wykres trendu liniowego wraz z wskazaniem wartości trendu z przedziałem ufności.
+
+```{r Trend_all, include=TRUE}
+
+
+trend_all <- tokyo_10s %>% 
+  TheilSen(pollutant = "air_temp", 
+           avg.time = "month", 
+           statistic = "mean")
+
+```
+
+```{r Trend_all_tablica, include=TRUE}
+
+trend_all$data$res2 %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(value = V1) %>% 
+  mutate(value = as.numeric(value)) %>% 
+  rownames_to_column(var = "Name") %>% 
+  .[c(12,16,17),] %>% 
+  knitr::kable(format = "pipe", padding = 0, digits = 3)
+
+```
+
+Należy zwrocić uwagę na wartości przedziałów ufności podane w kwadratowych nawiasach. Jeśli Jedna z wartości ma inny znak - lub + to wartość trendu nie jest statystycznie istotna. Oznacza to, że niekonieczeni występuje trend.
+
+```{r Trend_Sezonowy, include=TRUE}
+
+trend_season <- tokyo_10s %>% 
+  TheilSen(pollutant = "air_temp", 
+           avg.time = "month", 
+           statistic = "mean", 
+           type = "season")
+
+```
+
+***
+## 6.5. Róża wiatrów
+***
+
+Wykres róży wiatrów sporządziliśmy dzieląc dane na cztery pory roku w celu potencjalnego ujawnienia różnic w kierunku, z którego może występować największe nasilenie wiatru. 
+
+```{r Roza_wiatrow, include=TRUE}
+
+windRose(tokyo_10s, ws="ws", wd="wd", type="season", paddle="false", layout=c(4,1),
+         par.settings=list(fontsize=list(text=18)), 
+         key = list(labels = c("0-2", "2-4", "4-6", "6-24")),
+         key.footer = "(m/s)",
+         statistic =  list("fun"=length,"unit" = "%","scale" = "all", 
+                           "lab" = "Częstość wystąpień wiatru z danego kierunku [%]", 
+                           "fun2" = function(x) signif(mean(x, na.rm = TRUE), 3), 
+                           "lab2" = "mean","labcalm" = function(x) round(x, 1)))
+
+```
+
+Na pierwszy rzut oka można zauważyć, że dla stacji Tokyo w okresie wiosny oraz lata domnuje wiatr południowy, natomiast jesienią i zimą sytuacja jest odwrotna i dominuje wiatr wiejący z północy. Widoczne są też nieznaczne rożnice w średnich prędkościach wiatru (mean pod wykresem), z dominacją w okresie wiosennym. Najniższa prędkość występuje z kolei w okresie jesiennym. Sytuacja taka wynika w głównej mierze z wpływu monsunów.
+
+Głównym czynnikiem kształtującym klimat Japonii jest monsunowa cyrkulacja mas powietrza, związana z panującymi układami barycznymi nad Azją i Oceanem Spokojnym. Na strefowość klimatyczną nakłada się klimat monsunowy, którego zasięg obejmuje wyspy i kształtuje morski charakter klimatu kraju. 
+
+***
+## 6.6. Macierz Korelacji
+***
+Macierz korelacji liniowej Pearsona (macierz współczynników określających poziom zależności liniowej między zmiennymi losowymi), pozwala wstępnie sprawdzić występowanie zależności między analizowanymi zmiennymi. Mówiąc prosto, współczynnik ten może przyjmować wartości od -1 do 1. Im jest mniejszy, tym silniejsza zależność ujemna między parametrami, a im jest bliższy 1, tym silniejsza zależność dodatnia. Dodatkowo możemy sprawdzić, czy otrzymane wartości są istotne statystycznie (przyjmiemy poziom istotności równy 0.05).
+
+```{r Macierz_Korelacji, include=TRUE}
+
+# Wybranie interesujących nas kolumn z zestawu danych
+
+tokyo_10s_d <- tokyo_10s[2:9]
+
+# Definiowanie indywidualnej palety kolorów w zależności od współczynnika korelacji (kodowanie hex)
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+
+# Policzenie odpowiednich współczynników za pomocą funkcji 'corr'
+
+corr <- rcorr(as.matrix(tokyo_10s_d))
+
+# Zdefiniowanie wektora ze współczynnikami korelacji
+
+corr_r <- corr$r
+
+# zdefiniowanie wektora z wartościami p-value
+
+corr_p <- corr$P
+
+# Wykreślenie macierzy korelacji
+
+corrplot(corr_r, method = "color", col = col(200),  
+         type = "upper", order = "hclust", addCoef.col = "black", diag = FALSE,
+         tl.col = "black", tl.srt = 45, p.mat = corr_p, sig.level = 0.05)
+
+```
+
+To co należy na wstępie zauważyć to fakt, że wszystkie wartości współczynnika korelacji są statystycznie istotne na przyjętym poziomie istotności α = 0.05) – gdyby nie były, to byłyby przekreślone na wykresie. Druga najważniejsza obserwacja dotyczy bardzo silnej dodatniej korelacji między air_temp a dew_point, druga z kolei najsilniejsza korelacje wykazuje dew_point oraz RH. Najniższy stopień korelacji możemy natomiast zauważyć pomiędz RH i współczynnikami visibility oraz ceil_hgt. 
+
+***
+## 6.7. Wykresy rozrzutu
+***
+Wykres rozrzutu ukazuje zależności między dwoma parametrami, umieszczając je kolejno na osi X oraz Y. Z ułożenia punktów możemy wstępnie wnioskować o występowaniu zależności a także o jej postaci.
+
+```{r Wykresy_rozrzutu, include=TRUE}
+
+tokyo_10s_d <- tokyo_10s[2:9]
+
+
+scatterPlot(tokyo_10s, 
+            x = "air_temp", 
+            y = "dew_point", 
+            method = "hexbin", 
+            col= "Blues", 
+            xlab = "Temperatura powietrza [°C]", 
+            main="Wykres rozrzutu z liczbą wystąpień", 
+            key.footer = "Liczba",
+            ylab = "Temperatura punktu rosy [°C]")
+
+```
+
+Powyższy wykres obrazuje bardzo wyraźnie to co wynika z zależności fizycznych temperatury powietrza i temperatury punktu rosy. Można zauważyć, że w istocie temperatura punktu rosy nie jest większa niż temperatura powietrza, ale może być niższa. Z teorii: im większa różnica między tymi parametrami, tym wilgotność względna powietrza jest niższa.
+
+
+```{r Wykresy_rozrzutu_RH, include=TRUE}
+
+tokyo_10s_d <- tokyo_10s[2:9]
+
+
+scatterPlot(tokyo_10s, 
+            x = "RH", 
+            y = "visibility", 
+            method = "hexbin", 
+            col= "Blues", 
+            xlab = "Wilgotność Względna", 
+            main="Wykres rozrzutu z liczbą wystąpień", 
+            key.footer = "Liczba",
+            ylab = "Widoczność [%]")
+
+```
+Utworzony powżyej wykres obrazuje nam zależność najsłabiej zkorelowanych danych. Dzięki niemu możemy odcztać, że taka zależność pomimo niskiej korelacji w niektórych momentach, może być bardzo silna (bardzo duża liczba wystąpień), natomiast w innych liczba takich wystąpieć będzie równa = 0. 
+
+
+```{r Wykres_rozrzutu_z_trzecia_zmienna, include=TRUE}
+
+scatterPlot(tokyo_10s, 
+            x = "air_temp", 
+            y = "RH", 
+            z="visibility", 
+            col= "Purples", 
+            xlab = "Temperatura powietrza [°C]", 
+            main = "Wykres rozrzutu z trzecią zmienną", 
+            key.footer="Widoczność\n[m]",
+            ylab = "Wilgotność względna [%]")
+
+```
+
+Wykresy rozrzutu można wzbogacić o trzecią zmienną. Oprócz zależności między temperaturą powietrza a wilgotnością względną przedstawiono również widoczność za pomocą koloru fioletowego. Wprost z wykresu wynika, że z reguły większa widoczność związana jest z wyższymi temperaturami i niższą wilgotnością względną powietrza – dosyć oczywisty wniosek.
+
+***
+# Wnioski
+***
+
+Podsumowujac - wykonując to ćwiczenie poszerzyliśmy nasza wiedzę na temat przeprowadzania analizy danych metorologicznych, oraz o bazie danych ISD NOAA. Poznaliśmy wiele możliwości skorzystania z tej wiedzy w celu przeprowadzenia jak najdokladniejszych analiz przy pomocy języka R.  Wprzyszłości wykorystując tą wiedzę oraz zdobyte umiejętności będziemy w stanie osiagnąć zamierzone przez nas cele w stosunkowo krótkim czasie. Uważamy, że najważnieszym aspektem naszej pracy było zdobycie wiedzy z zakresu przeprowadzania analizy statystycznej przy pomocy RStudio. 
+
+***
+# Bibliografia
+***
+
+1) *A. Szulecka, R. Oleniacz, M. Rzeszutek (2017): Functionality of openair package in air pollution assessment and modeling – a case study of Krakow, Environmental Protection and Natural Resources, 28(2), 22-27. DOI: [10.1515/OSZN-2017-0009](https://www.sciendo.com/article/10.1515/oszn-2017-0009)* (dostep 15.04.2021)
+2) *J.N. Lott: [The Quality Control of the Integrated Surface Hourly database](https://www1.ncdc.noaa.gov/pub/data/inventories/ish-qc.pdf)* (dostep 15.04.2021)
+3) *D.C. Carslaw, K. Ropkins (2012): openair — An R package for air quality data analysis, Environmental Modelling & Software, 27–28(0), 52–61. DOI: [10.1016/j.envsoft.2011.09.008](https://www.sciencedirect.com/science/article/abs/pii/S1364815211002064?via%3Dihub)* (dostep 15.04.2021)
+4) *D.B. Stephenson (2005): Data analysis methods in weather and climate research, [on-line](http://empslocal.ex.ac.uk/people/staff/dbs202/cag/courses/MT37C/course-d.pdf) course* (dostep 15.04.2021)
+5) *https://bookdown.org/yihui/rmarkdown/html-document.html*  (dostep 15.04.2021)
+6) *https://www.datadreaming.org/post/r-markdown-theme-gallery/* (dostep 15.04.2021)
+7) *https://rpubs.com/danapower/577147* (dostep 15.04.2021)
+8) *https://pl.wikipedia.org/wiki/R_(język_programowania)* (dostep 15.04.2021)
+9) *https://bookdown.org/yihui/rmarkdown/* (dostep 15.04.2021)
+10) *https://dane.gov.pl/pl* (dostep 15.04.2021)
+11) *http://pbiecek.github.io/Przewodnik/Programowanie/jak_tworzyc_raporty.html* (dostep 15.04.2021)
+12) *https://tibble.tidyverse.org* (dostep 15.04.2021)
+13) *https://riptutorial.com/pl/r/example/2871/tworzenie-tabeli-danych* (dostep 15.04.2021)
+14) *https://cran.r-project.org/doc/contrib/wprowadzenie_do_R.pdf* (dostep 15.04.2021)
+15) *https://plotly.com/r/* (dostep 15.04.2021)
+16) *https://cran.r-project.org/doc/contrib/Biecek-R-basics.pdf* (dostep 15.04.2021)
+17) *https://www.ncdc.noaa.gov/isd* (dostep 15.04.2021)
+18) *http://japoland.pl/blog/tokio-2/* (dostep 19.04.2021)
+19) *https://pl.wikipedia.org/wiki/Geografia_Japonii#Klimat)* (dostep 23.04.2021)
+20) *https://pl.wikipedia.org/wiki/Współczynnik_korelacji_Pearsona* (dostep 25.04.2021)
+
