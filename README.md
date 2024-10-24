@@ -1,4 +1,4 @@
-# Project I: Analysis of Meteorological Data from the ISD NOAA Database
+# Analysis of Meteorological Data from the ISD NOAA Database
 
 ## 1. Objective
 
